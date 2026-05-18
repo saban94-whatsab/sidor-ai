@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   MessageSquare, 
   Send, 
@@ -17,11 +17,13 @@ import {
   Cpu,
   Globe,
   Zap,
-  ShieldCheck
+  ShieldCheck,
+  ClipboardList
 } from 'lucide-react';
 import { Order } from '../types';
 import { parseItems } from '../lib/utils';
 import { MiniOrderCard } from './MiniOrderCard';
+import { audioService } from '../lib/audioService';
 
 interface NoaChatProps {
   chatHistory: any[];
@@ -34,8 +36,6 @@ interface NoaChatProps {
   isPopup?: boolean;
   currentContext?: string;
 }
-
-import { audioService } from '../lib/audioService';
 
 export const NoaChat = ({ 
   chatHistory, 
@@ -55,7 +55,7 @@ export const NoaChat = ({
   const [isAutoVoice, setIsAutoVoice] = useState(() => localStorage.getItem('noa_auto_voice') === 'true');
   const [isUploading, setIsUploading] = useState(false);
   const [currentlySpeaking, setCurrentlySpeaking] = useState<number | null>(null);
-  const synthRef = useRef<SpeechSynthesis | null>(window.speechSynthesis);
+  const synthRef = useRef<SpeechSynthesis | null>(typeof window !== 'undefined' ? window.speechSynthesis : null);
 
   // Play sound on received message
   useEffect(() => {
@@ -81,7 +81,6 @@ export const NoaChat = ({
   }, [isAutoVoice]);
 
   const cleanTextForSpeech = (text: string) => {
-    // 1. Detect if it's an item list
     const items = parseItems(text);
     if (items.length > 0) {
       let speech = "הנה הפריטים שנמצאו: ";
@@ -90,11 +89,9 @@ export const NoaChat = ({
       });
       return speech;
     }
-
-    // 2. Regular cleaning
     return text
-      .replace(/[*_#]/g, '') // remove markdown
-      .replace(/[^\u0590-\u05FF0-9\s,.?!]/g, ' ') // keep hebrew, numbers, basic punctuation
+      .replace(/[*_#]/g, '') 
+      .replace(/[^\u0590-\u05FF0-9\s,.?!]/g, ' ') 
       .trim();
   };
 
@@ -108,13 +105,11 @@ export const NoaChat = ({
   const speak = (text: string, index: number) => {
     if (!synthRef.current) return;
 
-    // If already speaking this message, stop
     if (currentlySpeaking === index) {
       stopSpeaking();
       return;
     }
 
-    // Stop anything else
     stopSpeaking();
 
     const utterance = new SpeechSynthesisUtterance(cleanTextForSpeech(text));
@@ -143,23 +138,21 @@ export const NoaChat = ({
     }
   }, [chatHistory.length]);
 
-  // Initial mount behavior: Focus and Scroll
+  // Initial mount behavior
   useEffect(() => {
     const scrollOnMount = () => {
       if (chatScrollRef.current) {
         chatScrollRef.current.scrollTo({
           top: chatScrollRef.current.scrollHeight,
-          behavior: 'auto' // Immediate on mount for established chats
+          behavior: 'auto'
         });
       }
     };
-    
-    // Delay slightly to ensure layout is settled
     const timer = setTimeout(scrollOnMount, 300);
     return () => clearTimeout(timer);
   }, []);
 
-  // Auto-scroll to bottom - Ultra-Robust handling for SabanOS Precision
+  // Auto-scroll logic
   useEffect(() => {
     const scrollToBottom = (force = false) => {
       if (chatScrollRef.current) {
@@ -175,11 +168,9 @@ export const NoaChat = ({
       }
     };
 
-    // Initial scroll (aggressive)
     setTimeout(() => scrollToBottom(true), 100);
     setTimeout(() => scrollToBottom(true), 500);
 
-    // Use ResizeObserver to detect real-time rendering changes (images, cards)
     if (chatScrollRef.current) {
       const resizeObserver = new ResizeObserver(() => {
         scrollToBottom();
@@ -213,44 +204,59 @@ export const NoaChat = ({
 
   return (
     <div className="flex flex-col h-full bg-[#F8FAFC] relative overflow-hidden" dir="rtl">
-      {/* SabanOS Precision Scaling & Density Fix */}
+      
+      {/* 🛠️ מנוע כיווץ הרווחים והסרת שוליים עודפים 🛠️ */}
       <style dangerouslySetInnerHTML={{ __html: `
         :root { --chat-height: 100vh; }
         @supports (height: 100svh) { :root { --chat-height: 100svh; } }
         
+        /* כיווץ אגרסיבי לכל תוכן ה-HTML של נועה */
+        .noa-html-content p { 
+          margin: 2px 0 !important; 
+          padding: 0 !important; 
+          line-height: 1.35 !important; 
+          font-size: 12px !important;
+        }
+        .noa-html-content h2, .noa-html-content h3, .noa-html-content h4 { 
+          font-size: 13px !important; 
+          font-weight: 900 !important;
+          margin-top: 4px !important;
+          margin-bottom: 4px !important;
+          color: #1e293b !important;
+        }
         .noa-html-content table { 
           width: 100% !important; 
           border-collapse: collapse !important;
           border: 1px solid #e2e8f0 !important;
           font-size: 11px !important;
+          margin: 4px 0 !important;
         }
         .noa-html-content th, .noa-html-content td {
-          padding: 0.4rem !important;
+          padding: 4px 6px !important; /* צמצום ריווח פנימי בטבלאות */
           border-bottom: 1px solid #f1f5f9 !important;
         }
-        .noa-html-content h2 { 
-          font-size: 14px !important; 
-          font-weight: 700 !important;
-          margin-bottom: 0.5rem !important;
-          color: #1e293b !important;
+        .noa-html-content ul, .noa-html-content ol {
+          margin: 2px 0 !important;
+          padding-right: 15px !important;
         }
-        .noa-html-content p {
-          font-size: 12px !important;
-          margin-bottom: 0.5rem !important;
+        .noa-html-content li {
+          margin-bottom: 2px !important;
+          font-size: 11px !important;
         }
 
-        /* Message List Density */
+        /* כיווץ בועות שיחה */
         .chat-container {
           padding: 0.5rem !important;
           gap: 0.25rem !important;
         }
         .message-bubble {
-          padding: 0.75rem 1rem !important;
-          border-radius: 1rem !important;
+          padding: 6px 10px !important; /* ריווח פנימי מהודק */
+          border-radius: 12px !important;
           font-size: 13px !important;
-          line-height: 1.4 !important;
-          max-width: 90% !important;
+          line-height: 1.35 !important;
+          max-width: 85% !important;
           box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+          margin-bottom: 4px !important;
         }
         .message-bubble-user {
           background-color: #f8fafc !important;
@@ -263,7 +269,7 @@ export const NoaChat = ({
           color: #334155 !important;
         }
         
-        /* Input Area Density */
+        /* אזור הקלט ותפריטי פעולה */
         .input-area-card {
           padding: 0.5rem 1rem !important;
           border-top: 1px solid #f1f5f9 !important;
@@ -302,20 +308,13 @@ export const NoaChat = ({
            height: 32px !important;
            border-radius: 0.5rem !important;
         }
-
         .noa-html-content tr:nth-child(3) td:nth-child(3) { color: #68707d !important; }
         .noa-html-content tr:nth-child(4) td:nth-child(3) { color: #5e6269 !important; }
-
-        .noa-html-content {
-          height: auto !important;
-          min-height: 400px;
-          margin-bottom: 2rem;
-        }
       `}} />
       
       <header className="px-4 py-2 bg-white border-b border-slate-100 flex items-center justify-between z-30 shrink-0">
         <div className="flex items-center gap-3">
-           <button onClick={onBack} className="header-btn flex items-center justify-center bg-navy text-white active:scale-95 transition-all shadow-sm">
+           <button onClick={onBack} className="header-btn flex items-center justify-center bg-[#1e293b] text-white active:scale-95 transition-all shadow-sm">
              <ChevronRight size={16} />
            </button>
            <div className="flex flex-col">
@@ -335,7 +334,7 @@ export const NoaChat = ({
         </div>
       </header>
 
-      {/* Message List - Dense & Small Text */}
+      {/* Message List */}
       <div 
         ref={chatScrollRef}
         className="flex-1 overflow-y-auto chat-container flex flex-col w-full scroll-smooth custom-scrollbar bg-white"
@@ -439,10 +438,10 @@ export const NoaChat = ({
         ))}
       </div>
 
-      {/* Massive Input Area - Optimized for SabanOS Precision 6.0 */}
+      {/* Input Area */}
       <div className="bg-white border-t border-slate-100 px-4 py-3 z-30 shrink-0 shadow-xl noa-input-parent-audit">
         <div className="w-full space-y-3 noa-input-area-audit">
-          {/* Quick Actions - Compact Horizontal Scroll */}
+          {/* Quick Actions */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 noa-quick-actions-audit">
             {dynamicSuggestions.map((btn, i) => (
               <button 
@@ -504,7 +503,7 @@ export const NoaChat = ({
             />
             <button 
               type="submit"
-              className={`bg-blue-900 text-white h-10 w-10 rounded-xl hover:bg-gold hover:text-blue-950 transition-all shadow-lg active:scale-95 flex items-center justify-center shrink-0 noa-send-audit`}
+              className={`bg-[#1e293b] text-white h-10 w-10 rounded-xl hover:bg-gold hover:text-blue-950 transition-all shadow-lg active:scale-95 flex items-center justify-center shrink-0 noa-send-audit`}
             >
               <Send size={24} strokeWidth={3} />
             </button>
